@@ -1,0 +1,42 @@
+name: Deploy website content to production
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    environment: Production
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Trigger deployment
+      env:
+        DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+      run: |
+        set -euo pipefail
+
+        max_retries=5
+        retry_count=0
+        delay=2
+
+        while [ $retry_count -lt $max_retries ]; do
+          echo "Attempt $((retry_count+1)) to trigger build hook..."
+          response=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$DEPLOY_WEBHOOK_URL")
+          if [ "$response" = "200" ] || [ "$response" = "201" ]; then
+            echo "Build hook successfully triggered."
+            exit 0
+          fi
+          echo "Attempt $((retry_count+1)) failed with HTTP status $response. Retrying in $delay seconds..."
+          sleep $delay
+          retry_count=$((retry_count+1))
+          delay=$((delay * 2))
+        done
+
+        echo "Build hook trigger failed after $max_retries attempts."
+        exit 1
